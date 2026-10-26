@@ -1,0 +1,8 @@
+{
+  "name": "KataGo Go Grandmaster & Analyzer",
+  "description": "World-Class Go (Baduk/Weiqi) engine & position analyzer powered by AI. Evaluates board positions, win rates, score leads, candidate moves, and provides tactical master commentary.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
