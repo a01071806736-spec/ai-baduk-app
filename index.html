@@ -1,18 +1,2112 @@
 <!doctype html>
-<html lang="en">
+<html lang="ko">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>KataGo Go Grandmaster & Analyzer</title>
-    <meta name="description" content="World-Class Go (Baduk/Weiqi) engine & position analyzer powered by AI. Evaluates board positions, win rates, score leads, candidate moves, and provides tactical master commentary." />
-    <meta property="og:title" content="KataGo Go Grandmaster & Analyzer" />
-    <meta property="og:description" content="World-Class Go (Baduk/Weiqi) engine & position analyzer powered by AI. Evaluates board positions, win rates, score leads, candidate moves, and provides tactical master commentary." />
+    <title>나라들의 수도 타자연습</title>
+    <meta name="description" content="5단계 50개 세계 나라의 수도를 맞추는 타자연습 게임. 시간제한 단어 숨김 효과, 오타 감지 점수 시스템, 실시간 타수 측정 및 영화 엔딩 크레딧" />
+    <meta property="og:title" content="나라별 수도 타자연습" />
+    <meta property="og:description" content="5단계 50개 세계 나라의 수도를 맞추는 타자연습 게임. 시간제한 단어 숨김 효과, 오타 감지 점수 시스템, 실시간 타수 측정 및 영화 엔딩 크레딧" />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- Google & Pretendard Fonts -->
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+    <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+
+    <!-- Tailwind CSS (CDN for standalone execution without build tools) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Canvas Confetti CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+
+    <!-- React 18 & ReactDOM 18 UMD (works offline or online via classic script without CORS issues) -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+    <!-- Babel Standalone for inline JSX transpilation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+      body {
+        font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, 'Helvetica Neue', 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+        background-color: #0b0f19;
+        color: #f3f4f6;
+        overflow-x: hidden;
+      }
+
+      /* Custom keyframes for stamp slamming */
+      @keyframes stampSlam {
+        0% {
+          opacity: 0;
+          transform: scale(3) rotate(-25deg);
+        }
+        65% {
+          opacity: 0.9;
+          transform: scale(0.9) rotate(4deg);
+        }
+        85% {
+          transform: scale(1.05) rotate(-2deg);
+        }
+        100% {
+          opacity: 1;
+          transform: scale(1) rotate(0deg);
+        }
+      }
+
+      .animate-stamp {
+        animation: stampSlam 0.65s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+      }
+
+      @keyframes pulseGlow {
+        0%, 100% {
+          box-shadow: 0 0 25px rgba(239, 68, 68, 0.4), 0 0 50px rgba(245, 158, 11, 0.2);
+        }
+        50% {
+          box-shadow: 0 0 45px rgba(239, 68, 68, 0.8), 0 0 80px rgba(245, 158, 11, 0.4);
+        }
+      }
+
+      .stamp-glow {
+        animation: pulseGlow 2.5s infinite ease-in-out;
+      }
+
+      @keyframes twinkle {
+        0%, 100% { opacity: 0.2; transform: scale(0.8); }
+        50% { opacity: 1; transform: scale(1.2); }
+      }
+
+      .twinkle-star {
+        animation: twinkle 3s infinite ease-in-out;
+      }
+
+      /* Smooth custom scrollbar for credits */
+      .custom-credits-scroll::-webkit-scrollbar {
+        width: 6px;
+      }
+      .custom-credits-scroll::-webkit-scrollbar-track {
+        background: rgba(0, 0, 0, 0.5);
+      }
+      .custom-credits-scroll::-webkit-scrollbar-thumb {
+        background: #f59e0b;
+        border-radius: 9999px;
+      }
+    </style>
   </head>
   <body>
+    <!-- Hidden audio element for background music -->
+    <audio id="bgm-player" loop preload="auto">
+      <source src="public/bgm.mp3" type="audio/mpeg" />
+      <source src="../public/bgm.mp3" type="audio/mpeg" />
+      <source src="./bgm.mp3" type="audio/mpeg" />
+      <source src="bgm.mp3" type="audio/mpeg" />
+    </audio>
+
+    <!-- Hidden file input to allow picking local MP3 if desired -->
+    <input type="file" id="bgm-file-selector" accept="audio/*" style="display:none;" />
+
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+
+    <script type="text/babel">
+      const { useState, useEffect, useRef, useMemo } = React;
+
+      // ==========================================
+      // 1. DATA: 50 CAPITALS ACROSS 5 STAGES
+      // ==========================================
+      const STAGE_TIME_LIMITS = {
+        1: 9, // 1단계: 9초
+        2: 8, // 2단계: 8초
+        3: 7, // 3단계: 7초
+        4: 6, // 4단계: 6초
+        5: 5, // 5단계: 5초
+      };
+
+      const STAGE_TITLES = {
+        1: { title: "1단계: 친숙한 주요국 수도", subtitle: "노출 시간: 단어당 9초 (이후 단어 숨김)" },
+        2: { title: "2단계: 아시아 & 아메리카 수도", subtitle: "노출 시간: 단어당 8초 (이후 단어 숨김)" },
+        3: { title: "3단계: 유럽 & 중동 수도", subtitle: "노출 시간: 단어당 7초 (이후 단어 숨김)" },
+        4: { title: "4단계: 북유럽 & 동유럽 수도", subtitle: "노출 시간: 단어당 6초 (이후 단어 숨김)" },
+        5: { title: "5단계: 글로벌 챌린지 수도", subtitle: "노출 시간: 단어당 5초 (이후 단어 숨김)" },
+      };
+
+      const CAPITAL_WORDS = [
+        // Stage 1 (10 words - 9s)
+        { id: 1, stage: 1, country: "대한민국", capital: "서울", flag: "🇰🇷", continent: "아시아", trivia: "한강과 N서울타워가 있는 역동적인 수도" },
+        { id: 2, stage: 1, country: "일본", capital: "도쿄", flag: "🇯🇵", continent: "아시아", trivia: "세계 최대 규모의 메트로폴리스이자 첨단 도시" },
+        { id: 3, stage: 1, country: "프랑스", capital: "파리", flag: "🇫🇷", continent: "유럽", trivia: "에펠탑과 루브르 박물관의 세계적인 예술·패션 중심지" },
+        { id: 4, stage: 1, country: "영국", capital: "런던", flag: "🇬🇧", continent: "유럽", trivia: "빅벤과 템스강이 흐르는 유서 깊은 왕실의 도시" },
+        { id: 5, stage: 1, country: "미국", capital: "워싱턴", flag: "🇺🇸", continent: "북아메리카", trivia: "백악관과 국회의사당이 위치한 정치 행정의 중심지" },
+        { id: 6, stage: 1, country: "중국", capital: "베이징", flag: "🇨🇳", continent: "아시아", trivia: "자금성과 만리장성의 관문인 천년 고도" },
+        { id: 7, stage: 1, country: "이탈리아", capital: "로마", flag: "🇮🇹", continent: "유럽", trivia: "콜로세움과 고대 로마 제국의 역사가 살아 숨 쉬는 수도" },
+        { id: 8, stage: 1, country: "독일", capital: "베를린", flag: "🇩🇪", continent: "유럽", trivia: "브란덴부르크 문과 베를린 장벽의 역사를 품은 문화 수도" },
+        { id: 9, stage: 1, country: "캐나다", capital: "오타와", flag: "🇨🇦", continent: "북아메리카", trivia: "리도 운하와 웅장한 연방 의사당이 아름다운 수도" },
+        { id: 10, stage: 1, country: "스페인", capital: "마드리드", flag: "🇪🇸", continent: "유럽", trivia: "프라도 미술관과 열정적인 플라멩코의 중심 도시" },
+
+        // Stage 2 (10 words - 8s)
+        { id: 11, stage: 2, country: "호주", capital: "캔버라", flag: "🇦🇺", continent: "오세아니아", trivia: "시드니와 멜버른 사이 계획도시로 조성된 호주의 수도" },
+        { id: 12, stage: 2, country: "베트남", capital: "하노이", flag: "🇻🇳", continent: "아시아", trivia: "호안끼엠 호수와 천년의 역사가 어우러진 평화로운 수도" },
+        { id: 13, stage: 2, country: "러시아", capital: "모스크바", flag: "🇷🇺", continent: "유라시아", trivia: "붉은 광장과 성 바실리 대성당이 있는 대도시" },
+        { id: 14, stage: 2, country: "이집트", capital: "카이로", flag: "🇪🇬", continent: "아프리카", trivia: "나일강변과 기자 피라미드가 마주한 아프리카 최대 도시" },
+        { id: 15, stage: 2, country: "멕시코", capital: "멕시코시티", flag: "🇲🇽", continent: "북아메리카", trivia: "아즈텍 문명의 테노치티틀란 유적 위에 세워진 고원 도시" },
+        { id: 16, stage: 2, country: "인도", capital: "뉴델리", flag: "🇮🇳", continent: "아시아", trivia: "인디아 게이트와 다채로운 문화가 공존하는 거대 수도" },
+        { id: 17, stage: 2, country: "태국", capital: "방콕", flag: "🇹🇭", continent: "아시아", trivia: "왓 아룬 사원과 화려한 왕궁이 빛나는 미소의 도시" },
+        { id: 18, stage: 2, country: "그리스", capital: "아테네", flag: "🇬🇷", continent: "유럽", trivia: "파르테논 신전과 서양 민주주의의 발상지" },
+        { id: 19, stage: 2, country: "네덜란드", capital: "암스테르담", flag: "🇳🇱", continent: "유럽", trivia: "수많은 운하와 자전거, 튤립이 반기는 낭만의 수도" },
+        { id: 20, stage: 2, country: "브라질", capital: "브라질리아", flag: "🇧🇷", continent: "남아메리카", trivia: "비행기 모양 도시 설계로 유명한 유네스코 세계유산 수도" },
+
+        // Stage 3 (10 words - 7s)
+        { id: 21, stage: 3, country: "스위스", capital: "베른", flag: "🇨🇭", continent: "유럽", trivia: "중세풍 아케이드와 곰 공원이 매력적인 연방 도시" },
+        { id: 22, stage: 3, country: "튀르키예", capital: "앙카라", flag: "🇹🇷", continent: "유라시아", trivia: "아타튀르크 영묘가 자리한 아나톨리아 고원의 심장부" },
+        { id: 23, stage: 3, country: "몽골", capital: "울란바토르", flag: "🇲🇳", continent: "아시아", trivia: "붉은 영웅이란 뜻을 지닌 드넓은 초원의 수도" },
+        { id: 24, stage: 3, country: "아르헨티나", capital: "부에노스아이레스", flag: "🇦🇷", continent: "남아메리카", trivia: "탱고의 열정과 남미의 파리라 불리는 아름다운 항구도시" },
+        { id: 25, stage: 3, country: "스웨덴", capital: "스톡홀름", flag: "🇸🇪", continent: "유럽", trivia: "14개의 섬이 다리로 연결된 북유럽의 베네치아" },
+        { id: 26, stage: 3, country: "싱가포르", capital: "싱가포르", flag: "🇸🇬", continent: "아시아", trivia: "도시 자체가 나라인 청결하고 아름다운 글로벌 금융 허브" },
+        { id: 27, stage: 3, country: "사우디아라비아", capital: "리야드", flag: "🇸🇦", continent: "중동", trivia: "사막 속 초현대식 마천루가 솟아오른 왕국의 수도" },
+        { id: 28, stage: 3, country: "오스트리아", capital: "빈", flag: "🇦🇹", continent: "유럽", trivia: "모차르트와 베토벤의 숨결이 흐르는 클래식 음악의 성지" },
+        { id: 29, stage: 3, country: "벨기에", capital: "브뤼셀", flag: "🇧🇪", continent: "유럽", trivia: "그랑플라스 광장과 유럽연합(EU) 본부가 있는 유럽의 심장" },
+        { id: 30, stage: 3, country: "필리핀", capital: "마닐라", flag: "🇵🇭", continent: "아시아", trivia: "마닐라만 석양과 스페인 성벽 도시 인트라무로스가 유명한 수도" },
+
+        // Stage 4 (10 words - 6s)
+        { id: 31, stage: 4, country: "뉴질랜드", capital: "웰링턴", flag: "🇳🇿", continent: "오세아니아", trivia: "바람의 도시이자 세계에서 가장 남쪽에 위치한 수도" },
+        { id: 32, stage: 4, country: "노르웨이", capital: "오슬로", flag: "🇳🇴", continent: "유럽", trivia: "노벨 평화상이 수여되는 피오르드 연안의 평화로운 도시" },
+        { id: 33, stage: 4, country: "덴마크", capital: "코펜하겐", flag: "🇩🇰", continent: "유럽", trivia: "뉘하운 항구와 인어공주 동상, 동화 같은 자전거 천국" },
+        { id: 34, stage: 4, country: "핀란드", capital: "헬싱키", flag: "🇫🇮", continent: "유럽", trivia: "바다의 백설공주라 불리는 디자인과 힐링의 도시" },
+        { id: 35, stage: 4, country: "포르투갈", capital: "리스본", flag: "🇵🇹", continent: "유럽", trivia: "노란 28번 트램과 벨렝탑이 반기는 대항해시대의 출발지" },
+        { id: 36, stage: 4, country: "폴란드", capital: "바르샤바", flag: "🇵🇱", continent: "유럽", trivia: "전쟁의 폐허를 딛고 유네스코 유산으로 재건된 불사조 도시" },
+        { id: 37, stage: 4, country: "체코", capital: "프라하", flag: "🇨🇿", continent: "유럽", trivia: "카를교와 프라하성, 붉은 지붕이 빚어내는 로맨틱한 수도" },
+        { id: 38, stage: 4, country: "헝가리", capital: "부다페스트", flag: "🇭🇺", continent: "유럽", trivia: "도나우강의 진주라 불리는 국회의사당의 황금빛 야경 명소" },
+        { id: 39, stage: 4, country: "칠레", capital: "산티아고", flag: "🇨🇱", continent: "남아메리카", trivia: "웅장한 안데스 산맥 설산을 배경으로 펼쳐진 현대적 수도" },
+        { id: 40, stage: 4, country: "아일랜드", capital: "더블린", flag: "🇮🇪", continent: "유럽", trivia: "트리니티 칼리지와 문학 거장들의 혼이 깃든 에메랄드 섬의 수도" },
+
+        // Stage 5 (10 words - 5s)
+        { id: 41, stage: 5, country: "모로코", capital: "라바트", flag: "🇲🇦", continent: "아프리카", trivia: "하산 탑과 카스바 우다야가 바다를 마주한 왕국의 수도" },
+        { id: 42, stage: 5, country: "콜롬비아", capital: "보고타", flag: "🇨🇴", continent: "남아메리카", trivia: "해발 2,640m 몬세라테 언덕 아래 펼쳐진 고산 메가시티" },
+        { id: 43, stage: 5, country: "케냐", capital: "나이로비", flag: "🇰🇪", continent: "아프리카", trivia: "도시 스카이라인 바로 옆에 사파리 국립공원이 있는 자연의 수도" },
+        { id: 44, stage: 5, country: "남아프리카공화국", capital: "프리토리아", flag: "🇿🇦", continent: "아프리카", trivia: "보랏빛 자카란다 꽃이 만발하는 행정 수도" },
+        { id: 45, stage: 5, country: "페루", capital: "리마", flag: "🇵🇪", continent: "남아메리카", trivia: "태평양 해안 절벽과 미식 문화의 중심지" },
+        { id: 46, stage: 5, country: "우크라이나", capital: "키이우", flag: "🇺🇦", continent: "유럽", trivia: "성 소피아 대성당의 황금빛 돔이 빛나는 유구한 역사 도시" },
+        { id: 47, stage: 5, country: "인도네시아", capital: "자카르타", flag: "🇮🇩", continent: "아시아", trivia: "모나스 독립기념탑과 수많은 섬들의 활기찬 중심지" },
+        { id: 48, stage: 5, country: "크로아티아", capital: "자그레브", flag: "🇭🇷", continent: "유럽", trivia: "성 마르코 성당의 타일 지붕과 아기자기한 골목길의 수도" },
+        { id: 49, stage: 5, country: "아이슬란드", capital: "레이캬비크", flag: "🇮🇸", continent: "유럽", trivia: "세계 최북단 수도이자 오로라와 온천이 있는 연기의 만" },
+        { id: 50, stage: 5, country: "바티칸", capital: "바티칸시티", flag: "🇻🇦", continent: "유럽", trivia: "성 베드로 대성당과 시스티나 경당이 있는 세계에서 가장 작은 수도 국가" },
+      ];
+
+      // ==========================================
+      // 2. HANGUL KEYSTROKE & SPEED CALCULATOR
+      // ==========================================
+      const CHO_STROKES = [1, 2, 1, 1, 2, 1, 1, 1, 2, 1, 2, 1, 1, 2, 1, 1, 1, 1, 1];
+      const JUNG_STROKES = [1, 1, 1, 2, 1, 1, 1, 2, 1, 2, 2, 2, 1, 1, 2, 2, 2, 1, 1, 2, 1];
+      const JONG_STROKES = [
+        0, 1, 2, 2, 1, 2, 2, 1, 1, 2, 2, 2,
+        2, 2, 2, 2, 1, 1, 2, 1, 2, 1, 1, 1,
+        1, 1, 1, 1,
+      ];
+
+      function getKeystrokeCount(text) {
+        if (!text) return 0;
+        let strokes = 0;
+        for (let i = 0; i < text.length; i++) {
+          const code = text.charCodeAt(i);
+          if (code >= 0xac00 && code <= 0xd7a3) {
+            const syllableIndex = code - 0xac00;
+            const jong = syllableIndex % 28;
+            const jung = Math.floor((syllableIndex - jong) / 28) % 21;
+            const cho = Math.floor((syllableIndex - jong) / (28 * 21));
+            strokes += CHO_STROKES[cho] + JUNG_STROKES[jung] + JONG_STROKES[jong];
+          } else if (code >= 0x3131 && code <= 0x318e) {
+            strokes += 1;
+          } else {
+            strokes += 1;
+          }
+        }
+        return strokes;
+      }
+
+      function calculateCPM(keystrokes, elapsedSeconds) {
+        if (elapsedSeconds <= 0 || keystrokes <= 0) return 0;
+        const cpm = (keystrokes / elapsedSeconds) * 60;
+        return Math.min(Math.round(cpm), 1800);
+      }
+
+      function compareText(input, target) {
+        const result = [];
+        for (let i = 0; i < target.length; i++) {
+          const targetChar = target[i];
+          const inputChar = input[i];
+          if (inputChar === undefined) {
+            result.push({ char: targetChar, status: "pending" });
+          } else if (inputChar === targetChar) {
+            result.push({ char: targetChar, status: "correct" });
+          } else {
+            result.push({ char: targetChar, status: "incorrect" });
+          }
+        }
+        return result;
+      }
+
+      // ==========================================
+      // 3. SOUND SYNTHESIZER & BGM CONTROLLER
+      // ==========================================
+      class SoundManager {
+        constructor() {
+          this.ctx = null;
+          this.isMuted = false;
+        }
+
+        initContext() {
+          if (!this.ctx && typeof window !== "undefined") {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) this.ctx = new AudioCtx();
+          }
+          if (this.ctx && this.ctx.state === "suspended") {
+            this.ctx.resume().catch(() => {});
+          }
+        }
+
+        toggleMute() {
+          this.isMuted = !this.isMuted;
+          return this.isMuted;
+        }
+
+        playKeyClick() {
+          if (this.isMuted) return;
+          try {
+            this.initContext();
+            if (!this.ctx) return;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            const baseFreq = 500 + Math.random() * 200;
+            osc.type = "sine";
+            osc.frequency.setValueAtTime(baseFreq, this.ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(180, this.ctx.currentTime + 0.04);
+            gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.04);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start();
+            osc.stop(this.ctx.currentTime + 0.045);
+          } catch (e) {}
+        }
+
+        playBackspace() {
+          if (this.isMuted) return;
+          try {
+            this.initContext();
+            if (!this.ctx) return;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = "triangle";
+            osc.frequency.setValueAtTime(260, this.ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(90, this.ctx.currentTime + 0.06);
+            gain.gain.setValueAtTime(0.09, this.ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.06);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start();
+            osc.stop(this.ctx.currentTime + 0.065);
+          } catch (e) {}
+        }
+
+        playCorrect() {
+          if (this.isMuted) return;
+          try {
+            this.initContext();
+            if (!this.ctx) return;
+            const now = this.ctx.currentTime;
+            [523.25, 659.25, 783.99].forEach((freq, idx) => {
+              const osc = this.ctx.createOscillator();
+              const gain = this.ctx.createGain();
+              osc.type = "sine";
+              osc.frequency.setValueAtTime(freq, now + idx * 0.06);
+              gain.gain.setValueAtTime(0, now + idx * 0.06);
+              gain.gain.linearRampToValueAtTime(0.12, now + idx * 0.06 + 0.02);
+              gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.06 + 0.22);
+              osc.connect(gain);
+              gain.connect(this.ctx.destination);
+              osc.start(now + idx * 0.06);
+              osc.stop(now + idx * 0.06 + 0.25);
+            });
+          } catch (e) {}
+        }
+
+        playPerfectBonus() {
+          if (this.isMuted) return;
+          try {
+            this.initContext();
+            if (!this.ctx) return;
+            const now = this.ctx.currentTime;
+            [587.33, 739.99, 880, 1174.66].forEach((freq, idx) => {
+              const osc = this.ctx.createOscillator();
+              const gain = this.ctx.createGain();
+              osc.type = "triangle";
+              osc.frequency.setValueAtTime(freq, now + idx * 0.05);
+              gain.gain.setValueAtTime(0, now + idx * 0.05);
+              gain.gain.linearRampToValueAtTime(0.14, now + idx * 0.05 + 0.02);
+              gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.05 + 0.3);
+              osc.connect(gain);
+              gain.connect(this.ctx.destination);
+              osc.start(now + idx * 0.05);
+              osc.stop(now + idx * 0.05 + 0.32);
+            });
+          } catch (e) {}
+        }
+
+        playWrong() {
+          if (this.isMuted) return;
+          try {
+            this.initContext();
+            if (!this.ctx) return;
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = "sawtooth";
+            osc.frequency.setValueAtTime(140, now);
+            osc.frequency.setValueAtTime(120, now + 0.08);
+            gain.gain.setValueAtTime(0.1, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.22);
+          } catch (e) {}
+        }
+
+        playStageClear() {
+          if (this.isMuted) return;
+          try {
+            this.initContext();
+            if (!this.ctx) return;
+            const notes = [440, 554.37, 659.25, 880];
+            const now = this.ctx.currentTime;
+            notes.forEach((freq, idx) => {
+              const osc = this.ctx.createOscillator();
+              const gain = this.ctx.createGain();
+              osc.type = "triangle";
+              osc.frequency.setValueAtTime(freq, now + idx * 0.1);
+              gain.gain.setValueAtTime(0, now + idx * 0.1);
+              gain.gain.linearRampToValueAtTime(0.15, now + idx * 0.1 + 0.02);
+              gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.1 + 0.35);
+              osc.connect(gain);
+              gain.connect(this.ctx.destination);
+              osc.start(now + idx * 0.1);
+              osc.stop(now + idx * 0.1 + 0.4);
+            });
+          } catch (e) {}
+        }
+
+        playStampBoom() {
+          if (this.isMuted) return;
+          try {
+            this.initContext();
+            if (!this.ctx) return;
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = "triangle";
+            osc.frequency.setValueAtTime(160, now);
+            osc.frequency.exponentialRampToValueAtTime(40, now + 0.35);
+            gain.gain.setValueAtTime(0.3, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.4);
+
+            [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => {
+              const chime = this.ctx.createOscillator();
+              const chimeGain = this.ctx.createGain();
+              chime.type = "sine";
+              chime.frequency.setValueAtTime(freq, now + 0.1 + i * 0.08);
+              chimeGain.gain.setValueAtTime(0, now + 0.1 + i * 0.08);
+              chimeGain.gain.linearRampToValueAtTime(0.15, now + 0.12 + i * 0.08);
+              chimeGain.gain.exponentialRampToValueAtTime(0.001, now + 0.7 + i * 0.08);
+              chime.connect(chimeGain);
+              chimeGain.connect(this.ctx.destination);
+              chime.start(now + 0.1 + i * 0.08);
+              chime.stop(now + 0.8 + i * 0.08);
+            });
+          } catch (e) {}
+        }
+      }
+
+      const soundManager = new SoundManager();
+
+      // ==========================================
+      // 4. INLINE SVG ICONS (Lucide style)
+      // ==========================================
+      const Icons = {
+        Globe: (props) => (
+          <svg className={props.className || "w-5 h-5"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="2" y1="12" x2="22" y2="12" />
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+          </svg>
+        ),
+        Music: (props) => (
+          <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 18V5l12-2v13" />
+            <circle cx="6" cy="18" r="3" />
+            <circle cx="18" cy="16" r="3" />
+          </svg>
+        ),
+        Volume2: (props) => (
+          <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
+          </svg>
+        ),
+        VolumeX: (props) => (
+          <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+            <line x1="23" y1="9" x2="17" y2="15" />
+            <line x1="17" y1="9" x2="23" y2="15" />
+          </svg>
+        ),
+        RotateCcw: (props) => (
+          <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+            <path d="M3 3v5h5" />
+          </svg>
+        ),
+        HelpCircle: (props) => (
+          <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+            <line x1="12" y1="17" x2="12.01" y2="17" />
+          </svg>
+        ),
+        Trophy: (props) => (
+          <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+            <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+            <path d="M4 22h16" />
+            <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
+            <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
+            <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+          </svg>
+        ),
+        Zap: (props) => (
+          <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+          </svg>
+        ),
+        Eye: (props) => (
+          <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        ),
+        EyeOff: (props) => (
+          <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+            <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+            <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+            <line x1="2" y1="2" x2="22" y2="22" />
+          </svg>
+        ),
+        Sparkles: (props) => (
+          <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+          </svg>
+        ),
+        AlertCircle: (props) => (
+          <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+        ),
+        CheckCircle2: (props) => (
+          <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <path d="m9 12 2 2 4-4" />
+          </svg>
+        ),
+        CornerDownLeft: (props) => (
+          <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="9 10 4 15 9 20" />
+            <path d="M20 4v7a4 4 0 0 1-4 4H4" />
+          </svg>
+        ),
+        FastForward: (props) => (
+          <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="13 19 22 12 13 5 13 19" />
+            <polygon points="2 19 11 12 2 5 2 19" />
+          </svg>
+        ),
+        Clock: (props) => (
+          <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>
+        ),
+        ArrowRight: (props) => (
+          <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="5" y1="12" x2="19" y2="12" />
+            <polyline points="12 5 19 12 12 19" />
+          </svg>
+        ),
+        Film: (props) => (
+          <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect width="20" height="20" x="2" y="2" rx="2.18" ry="2.18" />
+            <line x1="7" y1="2" x2="7" y2="22" />
+            <line x1="17" y1="2" x2="17" y2="22" />
+            <line x1="2" y1="12" x2="22" y2="12" />
+            <line x1="2" y1="7" x2="7" y2="7" />
+            <line x1="2" y1="17" x2="7" y2="17" />
+            <line x1="17" y1="17" x2="22" y2="17" />
+            <line x1="17" y1="7" x2="22" y2="7" />
+          </svg>
+        ),
+        Star: (props) => (
+          <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill={props.fill || "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+          </svg>
+        ),
+        Award: (props) => (
+          <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="8" r="7" />
+            <polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88" />
+          </svg>
+        ),
+        Play: (props) => (
+          <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="5 3 19 12 5 21 5 3" />
+          </svg>
+        ),
+        Pause: (props) => (
+          <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="6" y="4" width="4" height="16" />
+            <rect x="14" y="4" width="4" height="16" />
+          </svg>
+        ),
+        ArrowUp: (props) => (
+          <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="19" x2="12" y2="5" />
+            <polyline points="5 12 12 5 19 12" />
+          </svg>
+        ),
+        ArrowDown: (props) => (
+          <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <polyline points="19 12 12 19 5 12" />
+          </svg>
+        ),
+        Share2: (props) => (
+          <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="18" cy="5" r="3" />
+            <circle cx="6" cy="12" r="3" />
+            <circle cx="18" cy="19" r="3" />
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+          </svg>
+        ),
+        Check: (props) => (
+          <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        ),
+        X: (props) => (
+          <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        ),
+      };
+
+      // ==========================================
+      // 5. HEADER COMPONENT
+      // ==========================================
+      function Header({
+        stage,
+        wordIndexInStage,
+        score,
+        cpm,
+        isMuted,
+        onToggleMute,
+        isBgmPlaying,
+        onToggleBgm,
+        onReset,
+        onOpenHelp,
+        isPlaying,
+      }) {
+        return (
+          <header className="w-full bg-slate-900/80 backdrop-blur-md border-b border-slate-800 sticky top-0 z-30">
+            <div className="max-w-6xl mx-auto px-4 py-3 sm:py-4">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-blue-500 to-cyan-400 flex items-center justify-center shadow-lg shadow-blue-500/20 text-white font-bold">
+                    <Icons.Globe className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h1 className="text-lg sm:text-xl font-bold tracking-tight text-white flex items-center gap-1.5">
+                        나라별 수도 타자연습
+                      </h1>
+                      <span className="text-[10px] sm:text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                        총 5단계 · 50개국
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 hidden sm:block">
+                      단어가 사라져도 끝까지 완성하세요! 오타 없이 입력 시 +1점 획득
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  {/* BGM Toggle button */}
+                  <button
+                    onClick={onToggleBgm}
+                    title={isBgmPlaying ? "배경음악 끄기" : "배경음악 켜기 (public/bgm.mp3)"}
+                    className="p-2 sm:px-3 sm:py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition flex items-center gap-1.5 text-xs font-medium border border-slate-700/60"
+                  >
+                    <Icons.Music className={`w-4 h-4 ${isBgmPlaying ? "text-cyan-400 animate-pulse" : "text-slate-500"}`} />
+                    <span className="hidden md:inline">{isBgmPlaying ? "BGM 켜짐" : "BGM 끔"}</span>
+                  </button>
+
+                  {/* Sound FX Toggle button */}
+                  <button
+                    onClick={onToggleMute}
+                    title={isMuted ? "효과음 켜기" : "효과음 끄기"}
+                    className="p-2 sm:px-3 sm:py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition flex items-center gap-1.5 text-xs font-medium border border-slate-700/60"
+                  >
+                    {isMuted ? <Icons.VolumeX className="w-4 h-4 text-red-400" /> : <Icons.Volume2 className="w-4 h-4 text-emerald-400" />}
+                    <span className="hidden md:inline">{isMuted ? "음소거" : "효과음"}</span>
+                  </button>
+
+                  <button
+                    onClick={onOpenHelp}
+                    title="게임 규칙 설명"
+                    className="p-2 sm:px-3 sm:py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition flex items-center gap-1.5 text-xs font-medium border border-slate-700/60"
+                  >
+                    <Icons.HelpCircle className="w-4 h-4 text-cyan-400" />
+                    <span className="hidden md:inline">규칙 안내</span>
+                  </button>
+
+                  {isPlaying && (
+                    <button
+                      onClick={onReset}
+                      title="처음부터 다시하기"
+                      className="p-2 sm:px-3 sm:py-2 rounded-lg bg-slate-800 hover:bg-rose-950/40 text-slate-300 hover:text-rose-300 transition flex items-center gap-1.5 text-xs font-medium border border-slate-700/60"
+                    >
+                      <Icons.RotateCcw className="w-4 h-4 text-rose-400" />
+                      <span className="hidden md:inline">처음부터</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Status bar */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-slate-800/60 text-xs">
+                <div className="flex items-center gap-2 bg-slate-800/40 px-3 py-2 rounded-lg border border-slate-800">
+                  <span className="text-slate-400">현재 단계:</span>
+                  <div className="flex items-center gap-1 font-semibold text-white">
+                    <span className="text-cyan-400 text-sm font-bold">{stage}단계</span>
+                    <span className="text-slate-500 font-normal">/ 5단계</span>
+                    <span className="ml-1 text-[10px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                      {STAGE_TIME_LIMITS[stage]}초 노출
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 bg-slate-800/40 px-3 py-2 rounded-lg border border-slate-800">
+                  <span className="text-slate-400">단어 진행:</span>
+                  <div className="font-semibold text-white">
+                    <span className="text-blue-400 font-bold">{wordIndexInStage + 1}</span>
+                    <span className="text-slate-500"> / 10</span>
+                    <span className="text-slate-400 text-[11px] ml-1.5">
+                      (전체 {(stage - 1) * 10 + wordIndexInStage + 1}/50)
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 bg-slate-800/40 px-3 py-2 rounded-lg border border-slate-800">
+                  <Icons.Trophy className="w-3.5 h-3.5 text-yellow-400 shrink-0" />
+                  <span className="text-slate-400">무오타 점수:</span>
+                  <div className="font-bold text-yellow-300 text-sm">
+                    {score}
+                    <span className="text-slate-500 font-normal text-xs ml-0.5">/ 50점</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 bg-slate-800/40 px-3 py-2 rounded-lg border border-slate-800">
+                  <Icons.Zap className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span className="text-slate-400">타자 속도:</span>
+                  <div className="font-bold text-emerald-400 text-sm">
+                    {cpm} <span className="text-xs text-slate-400 font-normal">타/분</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Progress 5 steps */}
+              <div className="mt-3 grid grid-cols-5 gap-1.5">
+                {[1, 2, 3, 4, 5].map((s) => {
+                  const isCompleted = s < stage;
+                  const isCurrent = s === stage;
+                  return (
+                    <div
+                      key={s}
+                      className={`relative overflow-hidden h-2 rounded-full transition-all duration-300 ${
+                        isCompleted
+                          ? "bg-gradient-to-r from-emerald-500 to-teal-400"
+                          : isCurrent
+                          ? "bg-gradient-to-r from-blue-500 to-cyan-400 ring-2 ring-cyan-400/50"
+                          : "bg-slate-800"
+                      }`}
+                      title={`${s}단계 (제한 ${STAGE_TIME_LIMITS[s]}초)`}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          </header>
+        );
+      }
+
+      // ==========================================
+      // 6. TYPING AREA COMPONENT
+      // ==========================================
+      function TypingArea({ currentWord, stage, wordIndexInStage, onWordComplete }) {
+        const timeLimit = STAGE_TIME_LIMITS[stage] || 9;
+        const [timeLeft, setTimeLeft] = useState(timeLimit);
+        const [isWordHidden, setIsWordHidden] = useState(false);
+        const [peekHint, setPeekHint] = useState(false);
+        const [input, setInput] = useState("");
+        const [hadTypo, setHadTypo] = useState(false);
+        const [totalKeystrokes, setTotalKeystrokes] = useState(0);
+
+        const startTimeRef = useRef(Date.now());
+        const timerIntervalRef = useRef(null);
+        const inputRef = useRef(null);
+
+        useEffect(() => {
+          setInput("");
+          setHadTypo(false);
+          setTotalKeystrokes(0);
+          setTimeLeft(timeLimit);
+          setIsWordHidden(false);
+          setPeekHint(false);
+          startTimeRef.current = Date.now();
+
+          const timeout = setTimeout(() => {
+            inputRef.current?.focus();
+          }, 50);
+
+          if (timerIntervalRef.current) {
+            clearInterval(timerIntervalRef.current);
+          }
+
+          timerIntervalRef.current = window.setInterval(() => {
+            const elapsed = (Date.now() - startTimeRef.current) / 1000;
+            const remaining = Math.max(0, timeLimit - elapsed);
+            setTimeLeft(remaining);
+
+            if (remaining <= 0) {
+              setIsWordHidden(true);
+            }
+          }, 50);
+
+          return () => {
+            clearTimeout(timeout);
+            if (timerIntervalRef.current) {
+              clearInterval(timerIntervalRef.current);
+            }
+          };
+        }, [currentWord, stage, timeLimit]);
+
+        const handleKeyDown = (e) => {
+          if (e.key === "Backspace") {
+            setHadTypo(true);
+            soundManager.playBackspace();
+            return;
+          }
+          if (e.key === "Enter") {
+            e.preventDefault();
+            handleSubmit();
+            return;
+          }
+          if (e.key.length === 1) {
+            soundManager.playKeyClick();
+          }
+        };
+
+        const handleChange = (e) => {
+          const val = e.target.value;
+          setInput(val);
+          const strokes = getKeystrokeCount(val);
+          setTotalKeystrokes((prev) => Math.max(prev, strokes));
+
+          const target = currentWord.capital;
+          let typoDetected = false;
+          for (let i = 0; i < val.length; i++) {
+            if (val[i] !== target[i]) {
+              typoDetected = true;
+              break;
+            }
+          }
+          if (typoDetected) {
+            setHadTypo(true);
+          }
+        };
+
+        const handleSubmit = () => {
+          const trimmedInput = input.trim();
+          if (!trimmedInput) return;
+
+          const now = Date.now();
+          const elapsedSeconds = Math.max(0.4, (now - startTimeRef.current) / 1000);
+          const target = currentWord.capital;
+
+          const isCorrect = trimmedInput === target;
+          const isPerfect = isCorrect && !hadTypo;
+          const strokes = getKeystrokeCount(trimmedInput);
+          const wordCPM = calculateCPM(strokes, elapsedSeconds);
+
+          if (isPerfect) {
+            soundManager.playPerfectBonus();
+          } else if (isCorrect) {
+            soundManager.playCorrect();
+          } else {
+            soundManager.playWrong();
+          }
+
+          onWordComplete({
+            typed: trimmedInput,
+            isCorrect,
+            isPerfect,
+            hadTypo,
+            timeTaken: parseFloat(elapsedSeconds.toFixed(1)),
+            disappeared: isWordHidden,
+            cpm: wordCPM,
+            keystrokes: strokes,
+          });
+        };
+
+        const handleSkip = () => {
+          const elapsedSeconds = (Date.now() - startTimeRef.current) / 1000;
+          soundManager.playWrong();
+          onWordComplete({
+            typed: input.trim() || "(미입력)",
+            isCorrect: false,
+            isPerfect: false,
+            hadTypo: true,
+            timeTaken: parseFloat(elapsedSeconds.toFixed(1)),
+            disappeared: isWordHidden,
+            cpm: 0,
+            keystrokes: 0,
+          });
+        };
+
+        const handlePeekHint = () => {
+          setPeekHint(true);
+          setHadTypo(true);
+          setTimeout(() => {
+            setPeekHint(false);
+            inputRef.current?.focus();
+          }, 1200);
+        };
+
+        const elapsedLive = Math.max(0.5, (Date.now() - startTimeRef.current) / 1000);
+        const liveCPM = calculateCPM(totalKeystrokes, elapsedLive);
+        const charMatches = compareText(input, currentWord.capital);
+        const timeProgressPercent = Math.min(100, (timeLeft / timeLimit) * 100);
+
+        return (
+          <div className="w-full max-w-3xl mx-auto">
+            <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden backdrop-blur-xl">
+              <div className="absolute -top-24 -right-24 w-60 h-60 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute -bottom-24 -left-24 w-60 h-60 bg-cyan-600/10 rounded-full blur-3xl pointer-events-none" />
+
+              {/* Card Header */}
+              <div className="flex items-center justify-between text-xs text-slate-400 mb-6">
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-cyan-300 font-medium">
+                    {currentWord.continent}
+                  </span>
+                  <span className="text-slate-500">|</span>
+                  <span className="text-slate-300">{currentWord.trivia}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-400">
+                    단어 <strong className="text-white">{wordIndexInStage + 1}</strong> / 10
+                  </span>
+                </div>
+              </div>
+
+              {/* Country Display */}
+              <div className="text-center mb-8">
+                <div className="inline-flex items-center justify-center gap-3 mb-2">
+                  <span className="text-4xl sm:text-5xl filter drop-shadow-md select-none">
+                    {currentWord.flag}
+                  </span>
+                  <h2 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
+                    {currentWord.country}
+                  </h2>
+                </div>
+                <p className="text-sm text-slate-400">
+                  위 나라의 수도 이름을 입력하세요
+                </p>
+              </div>
+
+              {/* Timer Bar */}
+              <div className="mb-8">
+                <div className="flex items-center justify-between text-xs mb-2">
+                  <div className="flex items-center gap-1.5 font-medium">
+                    <span className={isWordHidden ? "text-amber-400" : "text-slate-300"}>
+                      {isWordHidden ? "⏳ 단어 노출 시간 종료" : "⏱️ 단어 노출 시간"}
+                    </span>
+                    <span className="text-slate-500">(최대 {timeLimit}초)</span>
+                  </div>
+                  <div className="font-mono font-bold">
+                    {isWordHidden ? (
+                      <span className="text-amber-400 flex items-center gap-1">
+                        기다리는 중... (완성 후 제출)
+                      </span>
+                    ) : (
+                      <span className={timeLeft <= 3 ? "text-rose-400 animate-pulse text-sm" : "text-cyan-300 text-sm"}>
+                        {timeLeft.toFixed(1)}초 남음
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-700/50">
+                  <div
+                    className={`h-full rounded-full transition-all duration-75 ${
+                      isWordHidden
+                        ? "bg-slate-700"
+                        : timeLeft <= 3
+                        ? "bg-gradient-to-r from-amber-500 to-rose-500"
+                        : "bg-gradient-to-r from-blue-500 via-cyan-400 to-emerald-400"
+                    }`}
+                    style={{ width: `${isWordHidden ? 0 : timeProgressPercent}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Capital Word Display */}
+              <div className="min-h-[120px] flex items-center justify-center p-4 rounded-2xl bg-slate-950/70 border border-slate-800/80 mb-6 relative">
+                {!isWordHidden || peekHint ? (
+                  <div className="text-center">
+                    <div className="text-xs uppercase tracking-widest text-slate-500 mb-2 font-medium">
+                      {peekHint ? "힌트 (살짝 엿보기 중)" : "수도 이름 (정답)"}
+                    </div>
+                    <div className="flex items-center justify-center gap-1 sm:gap-2 flex-wrap">
+                      {charMatches.map((item, idx) => {
+                        let colorClass = "text-white bg-slate-800/60 border-slate-700";
+                        if (item.status === "correct") {
+                          colorClass = "text-emerald-300 bg-emerald-950/60 border-emerald-500/50 shadow-sm shadow-emerald-500/20";
+                        } else if (item.status === "incorrect") {
+                          colorClass = "text-rose-300 bg-rose-950/60 border-rose-500/50";
+                        }
+                        return (
+                          <span
+                            key={idx}
+                            className={`inline-flex items-center justify-center min-w-[48px] sm:min-w-[56px] h-14 sm:h-16 px-3 rounded-xl border text-2xl sm:text-3xl font-bold transition-all duration-150 ${colorClass}`}
+                          >
+                            {item.char}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-2">
+                    <div className="w-10 h-10 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 mx-auto flex items-center justify-center mb-2">
+                      <Icons.EyeOff className="w-5 h-5" />
+                    </div>
+                    <h3 className="text-base sm:text-lg font-bold text-amber-300 mb-1">
+                      시간이 지나 단어가 숨겨졌습니다!
+                    </h3>
+                    <p className="text-xs sm:text-sm text-slate-400 max-w-md mx-auto">
+                      <strong className="text-white">{currentWord.country}</strong>의 수도를 기억을 되살려 완성해주세요.
+                      <br />
+                      입력이 끝날 때까지 충분히 기다려 드립니다.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handlePeekHint}
+                      className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-amber-300 border border-amber-500/30 transition shadow-sm"
+                    >
+                      <Icons.Eye className="w-3.5 h-3.5" />
+                      <span>수도 다시 살짝 엿보기 (1초 힌트)</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Typing Input */}
+              <div className="space-y-4">
+                <div className="relative">
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={input}
+                    onChange={handleChange}
+                    onKeyDown={handleKeyDown}
+                    placeholder="여기에 수도를 입력하고 Enter를 누르세요"
+                    className="w-full px-5 py-4 sm:py-5 rounded-2xl bg-slate-800/90 border-2 border-slate-700 text-white placeholder-slate-500 text-xl sm:text-2xl font-bold tracking-wide text-center focus:outline-none focus:border-cyan-400 focus:ring-4 focus:ring-cyan-500/20 transition shadow-inner"
+                    autoComplete="off"
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    spellCheck="false"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSubmit}
+                    disabled={!input.trim()}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 disabled:opacity-30 disabled:cursor-not-allowed text-white text-xs sm:text-sm font-semibold transition flex items-center gap-1 shadow-md"
+                  >
+                    <span>입력</span>
+                    <Icons.CornerDownLeft className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 text-xs px-2">
+                  <div className="flex items-center gap-2">
+                    {!hadTypo ? (
+                      <div className="flex items-center gap-1.5 text-yellow-300 font-medium bg-yellow-950/40 px-2.5 py-1 rounded-full border border-yellow-500/30">
+                        <Icons.Sparkles className="w-3.5 h-3.5 text-yellow-400" />
+                        <span>오타 없음! 입력 완료 시 +1점 획득 가능</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 text-slate-400 font-medium bg-slate-800/80 px-2.5 py-1 rounded-full border border-slate-700">
+                        <Icons.AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+                        <span>오타 또는 수정 발생 (단어 통과 가능)</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <span className="text-slate-400">
+                      실시간 타수: <strong className="text-emerald-400 font-mono text-sm">{liveCPM}</strong> 타/분
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleSkip}
+                      className="text-slate-400 hover:text-slate-200 transition flex items-center gap-1 underline underline-offset-4 text-xs"
+                    >
+                      <span>단어 넘기기</span>
+                      <Icons.FastForward className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // ==========================================
+      // 7. STAGE CLEAR MODAL COMPONENT
+      // ==========================================
+      function StageClearModal({ stage, stageRecords, onNextStage }) {
+        const [countdown, setCountdown] = useState(5);
+        const perfectCount = stageRecords.filter((r) => r.isPerfect).length;
+        const correctCount = stageRecords.filter((r) => r.isCorrect).length;
+        const avgCPM = Math.round(
+          stageRecords.reduce((acc, r) => acc + r.cpm, 0) / Math.max(1, stageRecords.length)
+        );
+
+        const nextStage = stage + 1;
+        const nextTimeLimit = STAGE_TIME_LIMITS[nextStage] || 5;
+
+        useEffect(() => {
+          const timer = setInterval(() => {
+            setCountdown((prev) => {
+              if (prev <= 1) {
+                clearInterval(timer);
+                onNextStage();
+                return 0;
+              }
+              return prev - 1;
+            });
+          }, 1000);
+          return () => clearInterval(timer);
+        }, [onNextStage]);
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-3xl p-6 sm:p-8 shadow-2xl text-center relative overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-20 bg-emerald-500/20 blur-2xl rounded-full" />
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 mb-4 shadow-lg shadow-emerald-500/10">
+                <Icons.CheckCircle2 className="w-8 h-8" />
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-white mb-1">
+                {stage}단계 완료!
+              </h2>
+              <p className="text-sm text-slate-400 mb-6">
+                10개 단어를 모두 입력하셨습니다.
+              </p>
+
+              <div className="grid grid-cols-3 gap-2.5 mb-6 text-left">
+                <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700/60">
+                  <div className="text-[11px] text-slate-400 flex items-center gap-1 mb-1">
+                    <Icons.Trophy className="w-3 h-3 text-yellow-400" />
+                    <span>무오타 성공</span>
+                  </div>
+                  <div className="text-lg font-bold text-yellow-300">
+                    {perfectCount} <span className="text-xs text-slate-400 font-normal">/ 10</span>
+                  </div>
+                </div>
+
+                <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700/60">
+                  <div className="text-[11px] text-slate-400 flex items-center gap-1 mb-1">
+                    <Icons.CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                    <span>정답 수</span>
+                  </div>
+                  <div className="text-lg font-bold text-emerald-400">
+                    {correctCount} <span className="text-xs text-slate-400 font-normal">/ 10</span>
+                  </div>
+                </div>
+
+                <div className="bg-slate-800/60 p-3 rounded-xl border border-slate-700/60">
+                  <div className="text-[11px] text-slate-400 flex items-center gap-1 mb-1">
+                    <Icons.Zap className="w-3 h-3 text-cyan-400" />
+                    <span>평균 타수</span>
+                  </div>
+                  <div className="text-lg font-bold text-cyan-300">
+                    {avgCPM} <span className="text-xs text-slate-400 font-normal">타</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-gradient-to-r from-blue-950/40 via-cyan-950/30 to-blue-950/40 border border-cyan-500/30 rounded-2xl p-4 mb-6 text-left">
+                <div className="flex items-center gap-2 text-cyan-300 text-xs font-semibold uppercase tracking-wider mb-1">
+                  <Icons.Clock className="w-4 h-4 text-cyan-400" />
+                  <span>다음 단계 안내: {nextStage}단계</span>
+                </div>
+                <p className="text-sm font-bold text-white mb-1">
+                  {STAGE_TITLES[nextStage]?.title || `${nextStage}단계`}
+                </p>
+                <div className="text-xs text-amber-300 flex items-center gap-1">
+                  <span>⚡ 단어 노출 제한시간: </span>
+                  <strong className="underline underline-offset-2">{STAGE_TIME_LIMITS[stage]}초 → {nextTimeLimit}초</strong>
+                  <span>(1초 단축!)</span>
+                </div>
+              </div>
+
+              <button
+                onClick={onNextStage}
+                className="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-blue-600 via-cyan-500 to-teal-400 hover:from-blue-500 hover:to-teal-300 text-white font-bold text-base shadow-lg shadow-cyan-500/25 transition flex items-center justify-center gap-2 group"
+              >
+                <span>{nextStage}단계 시작하기 ({countdown}초 후 자동 시작)</span>
+                <Icons.ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+      // ==========================================
+      // 8. GRAND '참 잘했어요' STAMP CEREMONY
+      // ==========================================
+      function StampCelebration({ records, score, onGoToCredits, onRestart }) {
+        const [stampLanded, setStampLanded] = useState(false);
+        const [countdown, setCountdown] = useState(6);
+
+        const perfectCount = records.filter((r) => r.isPerfect).length;
+        const correctCount = records.filter((r) => r.isCorrect).length;
+        const accuracy = Math.round((correctCount / Math.max(1, records.length)) * 100);
+        const avgCPM = Math.round(
+          records.reduce((acc, r) => acc + r.cpm, 0) / Math.max(1, records.length)
+        );
+        const maxCPM = records.reduce((max, r) => Math.max(max, r.cpm), 0);
+        const totalTime = records.reduce((acc, r) => acc + r.timeTaken, 0);
+        const minutes = Math.floor(totalTime / 60);
+        const seconds = Math.round(totalTime % 60);
+
+        useEffect(() => {
+          const timer1 = setTimeout(() => {
+            soundManager.playStampBoom();
+            setStampLanded(true);
+
+            if (typeof confetti === "function") {
+              const end = Date.now() + 3.5 * 1000;
+              const colors = ["#ef4444", "#f59e0b", "#10b981", "#3b82f6", "#8b5cf6", "#ec4899"];
+              const frame = () => {
+                confetti({
+                  particleCount: 5,
+                  angle: 60,
+                  spread: 55,
+                  origin: { x: 0 },
+                  colors: colors,
+                });
+                confetti({
+                  particleCount: 5,
+                  angle: 120,
+                  spread: 55,
+                  origin: { x: 1 },
+                  colors: colors,
+                });
+                if (Date.now() < end) requestAnimationFrame(frame);
+              };
+              frame();
+            }
+          }, 400);
+
+          const timer2 = setInterval(() => {
+            setCountdown((prev) => {
+              if (prev <= 1) {
+                clearInterval(timer2);
+                onGoToCredits();
+                return 0;
+              }
+              return prev - 1;
+            });
+          }, 1000);
+
+          return () => {
+            clearTimeout(timer1);
+            clearInterval(timer2);
+          };
+        }, [onGoToCredits]);
+
+        return (
+          <div className="min-h-[85vh] flex flex-col items-center justify-center p-4 text-center max-w-4xl mx-auto">
+            <div className="relative mb-8 py-4">
+              {stampLanded && (
+                <div className="absolute inset-0 m-auto w-64 h-64 bg-red-600/30 rounded-full blur-3xl pointer-events-none" />
+              )}
+
+              {/* Korean Traditional Circular Seal Stamp: 참 잘했어요 */}
+              <div
+                className={`relative z-10 w-64 h-64 sm:w-72 sm:h-72 mx-auto rounded-full border-8 border-dashed border-red-600 bg-red-950/40 p-4 flex flex-col items-center justify-center select-none shadow-2xl ${
+                  stampLanded ? "animate-stamp stamp-glow" : "opacity-0 scale-150"
+                }`}
+                style={{
+                  boxShadow: stampLanded
+                    ? "0 0 60px rgba(220, 38, 38, 0.6), inset 0 0 35px rgba(220, 38, 38, 0.4)"
+                    : "none",
+                }}
+              >
+                <div className="w-full h-full rounded-full border-4 border-red-500/80 flex flex-col items-center justify-center p-3 text-red-500">
+                  <div className="flex items-center gap-1.5 text-amber-400 mb-1">
+                    <Icons.Star className="w-4 h-4" fill="#f59e0b" />
+                    <Icons.Star className="w-5 h-5" fill="#f59e0b" />
+                    <Icons.Star className="w-6 h-6" fill="#f59e0b" />
+                    <Icons.Star className="w-5 h-5" fill="#f59e0b" />
+                    <Icons.Star className="w-4 h-4" fill="#f59e0b" />
+                  </div>
+                  <div className="text-3xl sm:text-4xl font-black tracking-widest text-red-500 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] font-serif scale-y-110 mb-1">
+                    참 잘했어요
+                  </div>
+                  <div className="text-xs sm:text-sm font-bold text-red-400/90 tracking-widest uppercase mb-1">
+                    ★ 50개국 수도 완주 인증 ★
+                  </div>
+                  <div className="text-[11px] font-medium text-amber-300/90 bg-red-900/60 px-3 py-0.5 rounded-full border border-red-600/40">
+                    최고 타자 속도: {maxCPM} 타/분
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-white mb-2 tracking-tight">
+              축하합니다! 5개 단계를 모두 완성하셨습니다!
+            </h2>
+            <p className="text-slate-400 text-sm sm:text-base max-w-xl mx-auto mb-8">
+              1단계부터 5단계까지 전 세계 50개 나라의 수도를 당당히 정복했습니다.
+            </p>
+
+            <div className="w-full max-w-2xl bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl mb-8 backdrop-blur-md">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div className="p-3 rounded-xl bg-slate-800/50 border border-slate-700/50">
+                  <div className="text-xs text-slate-400 mb-1 flex items-center justify-center gap-1">
+                    <Icons.Trophy className="w-3.5 h-3.5 text-yellow-400" />
+                    <span>무오타 점수</span>
+                  </div>
+                  <div className="text-2xl font-black text-yellow-400">
+                    {score} <span className="text-xs text-slate-400 font-normal">/ 50점</span>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-800/50 border border-slate-700/50">
+                  <div className="text-xs text-slate-400 mb-1 flex items-center justify-center gap-1">
+                    <Icons.Award className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>정답 정확도</span>
+                  </div>
+                  <div className="text-2xl font-black text-emerald-400">{accuracy}%</div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-800/50 border border-slate-700/50">
+                  <div className="text-xs text-slate-400 mb-1 flex items-center justify-center gap-1">
+                    <Icons.Zap className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>평균 타수</span>
+                  </div>
+                  <div className="text-2xl font-black text-cyan-400">
+                    {avgCPM} <span className="text-xs text-slate-400 font-normal">타/분</span>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-800/50 border border-slate-700/50">
+                  <div className="text-xs text-slate-400 mb-1 flex items-center justify-center gap-1">
+                    <Icons.Clock className="w-3.5 h-3.5 text-blue-400" />
+                    <span>총 소요 시간</span>
+                  </div>
+                  <div className="text-2xl font-black text-blue-400">
+                    {minutes}분 {seconds}초
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 w-full max-w-md">
+              <button
+                onClick={onGoToCredits}
+                className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-amber-500 via-rose-500 to-indigo-600 hover:from-amber-400 hover:to-indigo-500 text-white font-extrabold text-base shadow-xl shadow-rose-500/25 transition transform hover:-translate-y-0.5 flex items-center justify-center gap-2 group"
+              >
+                <Icons.Film className="w-5 h-5 text-yellow-300" />
+                <span>영화 엔딩 크레딧 보기 ({countdown}초)</span>
+              </button>
+
+              <button
+                onClick={onRestart}
+                className="w-full sm:w-auto py-4 px-6 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-semibold text-sm border border-slate-700 transition flex items-center justify-center gap-2"
+              >
+                <Icons.RotateCcw className="w-4 h-4 text-slate-400" />
+                <span>다시 도전하기</span>
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+      // ==========================================
+      // 9. MOVIE ENDING CREDITS COMPONENT
+      // ==========================================
+      function MovieCredits({ records, score, onRestart }) {
+        const containerRef = useRef(null);
+        const [isPlaying, setIsPlaying] = useState(true);
+        const [speed, setSpeed] = useState(1);
+        const [copied, setCopied] = useState(false);
+
+        const stageGroups = {
+          1: records.filter((r) => r.stage === 1),
+          2: records.filter((r) => r.stage === 2),
+          3: records.filter((r) => r.stage === 3),
+          4: records.filter((r) => r.stage === 4),
+          5: records.filter((r) => r.stage === 5),
+        };
+
+        const correctCount = records.filter((r) => r.isCorrect).length;
+        const avgCPM = Math.round(
+          records.reduce((acc, r) => acc + r.cpm, 0) / Math.max(1, records.length)
+        );
+        const maxCPM = records.reduce((max, r) => Math.max(max, r.cpm), 0);
+        const totalSeconds = records.reduce((acc, r) => acc + r.timeTaken, 0);
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = Math.round(totalSeconds % 60);
+
+        useEffect(() => {
+          let animId;
+          let lastTime = performance.now();
+
+          const scrollLoop = (currentTime) => {
+            const delta = (currentTime - lastTime) / 1000;
+            lastTime = currentTime;
+
+            if (isPlaying && containerRef.current) {
+              const pixelsToScroll = 45 * speed * delta;
+              containerRef.current.scrollTop += pixelsToScroll;
+
+              const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
+              if (scrollTop + clientHeight >= scrollHeight - 5) {
+                setIsPlaying(false);
+              }
+            }
+            animId = requestAnimationFrame(scrollLoop);
+          };
+
+          animId = requestAnimationFrame(scrollLoop);
+          return () => cancelAnimationFrame(animId);
+        }, [isPlaying, speed]);
+
+        const handleScrollToTop = () => {
+          if (containerRef.current) {
+            containerRef.current.scrollTo({ top: 0, behavior: "smooth" });
+          }
+        };
+
+        const handleScrollToBottom = () => {
+          if (containerRef.current) {
+            containerRef.current.scrollTo({
+              top: containerRef.current.scrollHeight,
+              behavior: "smooth",
+            });
+          }
+        };
+
+        const handleCopySummary = () => {
+          const text =
+            `🎬 [나라별 수도 타자연습 결과]\n` +
+            `🏆 무오타 점수: ${score}/50점\n` +
+            `정답 수: ${correctCount}/50개 (${Math.round((correctCount / 50) * 100)}%)\n` +
+            `평균 타수: ${avgCPM} 타/분 | 최고 타수: ${maxCPM} 타/분\n` +
+            `총 소요 시간: ${minutes}분 ${seconds}초\n` +
+            `50개국 수도 정복 완료! 참 잘했어요 ⭐️`;
+          navigator.clipboard.writeText(text).then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          });
+        };
+
+        return (
+          <div className="relative w-full min-h-screen bg-black text-amber-100 flex flex-col font-sans select-none overflow-hidden">
+            <div className="absolute inset-0 pointer-events-none opacity-40">
+              <div className="absolute top-[10%] left-[15%] w-1.5 h-1.5 bg-white rounded-full twinkle-star" />
+              <div className="absolute top-[25%] left-[80%] w-2 h-2 bg-yellow-200 rounded-full twinkle-star" style={{ animationDelay: "1s" }} />
+              <div className="absolute top-[60%] left-[20%] w-1.5 h-1.5 bg-blue-200 rounded-full twinkle-star" style={{ animationDelay: "1.5s" }} />
+              <div className="absolute top-[45%] left-[70%] w-1 h-1 bg-white rounded-full twinkle-star" style={{ animationDelay: "0.5s" }} />
+              <div className="absolute top-[80%] left-[40%] w-2 h-2 bg-amber-200 rounded-full twinkle-star" style={{ animationDelay: "2s" }} />
+            </div>
+
+            {/* Controls Bar */}
+            <div className="sticky top-0 z-40 bg-black/85 backdrop-blur-md border-b border-yellow-900/40 px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-2xl">
+              <div className="flex items-center gap-2">
+                <Icons.Film className="w-5 h-5 text-amber-400 animate-pulse" />
+                <span className="text-xs sm:text-sm font-bold tracking-wider uppercase text-amber-300">
+                  엔딩 크레딧 상영관
+                </span>
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  총 50단어 전수 기록
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <button
+                  onClick={() => setIsPlaying(!isPlaying)}
+                  className="p-2 sm:px-3 sm:py-1.5 rounded-lg bg-amber-950/60 hover:bg-amber-900/60 text-amber-300 border border-amber-500/30 text-xs font-semibold flex items-center gap-1.5 transition"
+                >
+                  {isPlaying ? <Icons.Pause className="w-3.5 h-3.5" /> : <Icons.Play className="w-3.5 h-3.5" />}
+                  <span className="hidden sm:inline">{isPlaying ? "일시정지" : "자동재생"}</span>
+                </button>
+
+                <div className="flex items-center bg-slate-900/80 rounded-lg p-0.5 border border-slate-800 text-xs">
+                  {[0.5, 1, 2, 3].map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => {
+                        setSpeed(s);
+                        setIsPlaying(true);
+                      }}
+                      className={`px-2 py-1 rounded text-[11px] font-mono font-medium transition ${
+                        speed === s
+                          ? "bg-amber-500 text-black font-bold shadow-sm"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      {s}x
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  onClick={handleScrollToTop}
+                  title="맨 처음으로"
+                  className="p-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 text-xs transition"
+                >
+                  <Icons.ArrowUp className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={handleScrollToBottom}
+                  title="맨 아래로"
+                  className="p-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 text-xs transition"
+                >
+                  <Icons.ArrowDown className="w-3.5 h-3.5" />
+                </button>
+
+                <button
+                  onClick={handleCopySummary}
+                  className="p-2 sm:px-3 sm:py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 text-xs font-medium flex items-center gap-1.5 transition"
+                >
+                  {copied ? <Icons.Check className="w-3.5 h-3.5 text-emerald-400" /> : <Icons.Share2 className="w-3.5 h-3.5 text-cyan-400" />}
+                  <span className="hidden md:inline">{copied ? "복사됨!" : "결과 복사"}</span>
+                </button>
+
+                <button
+                  onClick={onRestart}
+                  className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white text-xs font-bold flex items-center gap-1.5 shadow-md transition ml-1"
+                >
+                  <Icons.RotateCcw className="w-3.5 h-3.5" />
+                  <span>새 게임</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Scroll Container */}
+            <div
+              ref={containerRef}
+              className="flex-1 overflow-y-auto px-4 py-16 scroll-smooth text-center max-w-3xl mx-auto w-full custom-credits-scroll"
+              style={{ scrollBehavior: isPlaying ? "auto" : "smooth" }}
+            >
+              <div className="py-20 space-y-6">
+                <div className="text-xs sm:text-sm tracking-[0.4em] uppercase text-amber-400/80 font-serif">
+                  ★ WORLD CAPITALS TYPING SPECIAL ★
+                </div>
+                <h1 className="text-4xl sm:text-6xl font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-b from-yellow-100 via-amber-300 to-yellow-600 font-serif drop-shadow-[0_4px_12px_rgba(245,158,11,0.3)]">
+                  나라별 수도 타자 원정대
+                </h1>
+                <div className="text-sm sm:text-base text-amber-200/70 tracking-widest font-serif italic">
+                  THE WORLD CAPITALS TYPING ODYSSEY
+                </div>
+                <div className="w-24 h-0.5 bg-gradient-to-r from-transparent via-amber-400 to-transparent mx-auto my-4" />
+              </div>
+
+              {/* Player Stats */}
+              <div className="py-12 border-y border-amber-900/30 space-y-4 max-w-xl mx-auto">
+                <div className="text-xs tracking-widest text-amber-400 uppercase font-serif">
+                  주연 및 타자 마스터
+                </div>
+                <div className="text-2xl sm:text-3xl font-extrabold text-white">
+                  플레이어 (YOU)
+                </div>
+
+                <div className="pt-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                  <div className="p-2.5 rounded-xl bg-amber-950/30 border border-amber-900/50">
+                    <div className="text-amber-400/80 mb-1">무오타 점수</div>
+                    <div className="text-lg font-bold text-yellow-300">{score} / 50점</div>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-amber-950/30 border border-amber-900/50">
+                    <div className="text-amber-400/80 mb-1">정답 수</div>
+                    <div className="text-lg font-bold text-emerald-300">{correctCount} / 50개</div>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-amber-950/30 border border-amber-900/50">
+                    <div className="text-amber-400/80 mb-1">평균 타속</div>
+                    <div className="text-lg font-bold text-cyan-300">{avgCPM} 타/분</div>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-amber-950/30 border border-amber-900/50">
+                    <div className="text-amber-400/80 mb-1">최고 타속</div>
+                    <div className="text-lg font-bold text-rose-300">{maxCPM} 타/분</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 50 Words List by Stage */}
+              <div className="py-16 space-y-20">
+                {[1, 2, 3, 4, 5].map((stg) => {
+                  const list = stageGroups[stg] || [];
+                  const timeLimit = 10 - stg;
+
+                  return (
+                    <div key={stg} className="space-y-8">
+                      <div className="space-y-2">
+                        <div className="text-xs tracking-[0.3em] uppercase text-cyan-400 font-mono">
+                          STAGE {stg} · 10 WORDS
+                        </div>
+                        <h2 className="text-2xl sm:text-3xl font-black text-amber-300 tracking-wide font-serif">
+                          제 {stg} 막: {stg === 1 ? "친숙한 주요국" : stg === 2 ? "아시아 & 아메리카" : stg === 3 ? "유럽 & 중동" : stg === 4 ? "북유럽 & 동유럽" : "글로벌 챌린지"} 수도
+                        </h2>
+                        <div className="text-xs text-slate-400">
+                          단어 노출 제한: {timeLimit}초 (이후 단어 숨김)
+                        </div>
+                        <div className="w-16 h-0.5 bg-amber-500/40 mx-auto mt-2" />
+                      </div>
+
+                      <div className="space-y-4 max-w-xl mx-auto">
+                        {list.map((rec, index) => {
+                          const globalIndex = (stg - 1) * 10 + index + 1;
+                          return (
+                            <div
+                              key={rec.id}
+                              className={`p-4 rounded-2xl border transition-all text-left ${
+                                rec.isPerfect
+                                  ? "bg-amber-950/20 border-yellow-500/30 shadow-sm"
+                                  : rec.isCorrect
+                                  ? "bg-slate-900/70 border-emerald-500/30"
+                                  : "bg-red-950/20 border-red-500/30"
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-3 mb-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-mono text-slate-500">
+                                    #{String(globalIndex).padStart(2, "0")}
+                                  </span>
+                                  <span className="text-2xl">{rec.flag}</span>
+                                  <div>
+                                    <div className="text-base font-bold text-white flex items-center gap-2">
+                                      <span>{rec.country}</span>
+                                      <span className="text-xs text-slate-400 font-normal">
+                                        ({rec.continent})
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="shrink-0 text-right">
+                                  {rec.isPerfect ? (
+                                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-yellow-300 bg-yellow-500/20 border border-yellow-500/40 px-2 py-0.5 rounded-full">
+                                      <Icons.Sparkles className="w-3 h-3 text-yellow-400" />
+                                      <span>무오타 +1점</span>
+                                    </span>
+                                  ) : rec.isCorrect ? (
+                                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-300 bg-emerald-500/20 border border-emerald-500/40 px-2 py-0.5 rounded-full">
+                                      <span>정답 (수정됨)</span>
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-rose-300 bg-rose-500/20 border border-rose-500/40 px-2 py-0.5 rounded-full">
+                                      <span>오답 / 스킵</span>
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs pt-2 border-t border-slate-800/80 font-mono">
+                                <div>
+                                  <span className="text-slate-500 block text-[10px]">정답 수도</span>
+                                  <span className="text-amber-300 font-bold">{rec.capital}</span>
+                                </div>
+                                <div>
+                                  <span className="text-slate-500 block text-[10px]">내가 입력한 단어</span>
+                                  <span className={rec.isCorrect ? "text-emerald-300 font-bold" : "text-rose-400 line-through"}>
+                                    {rec.typed}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-slate-500 block text-[10px]">타자 속도</span>
+                                  <span className="text-cyan-300">{rec.cpm} 타/분</span>
+                                </div>
+                                <div>
+                                  <span className="text-slate-500 block text-[10px]">소요 시간</span>
+                                  <span className="text-slate-300">
+                                    {rec.timeTaken}초 {rec.disappeared && <span className="text-amber-400 text-[10px]">(숨김후완성)</span>}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="mt-2 text-[11px] text-slate-400 italic">
+                                💡 {rec.trivia}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Epilogue */}
+              <div className="py-24 border-t border-amber-900/40 space-y-8">
+                <div className="w-16 h-16 rounded-full bg-red-950/60 border-2 border-dashed border-red-500 text-red-500 flex items-center justify-center mx-auto text-xs font-serif font-black tracking-widest">
+                  참잘했어요
+                </div>
+
+                <div className="space-y-3">
+                  <h3 className="text-xl sm:text-2xl font-bold text-amber-300 font-serif">
+                    위대한 50개국 수도 여정을 마쳤습니다
+                  </h3>
+                  <p className="text-sm text-amber-200/70 max-w-md mx-auto leading-relaxed">
+                    점점 줄어드는 촉박한 시간 속에서도, 단어가 사라진 후에도 포기하지 않고
+                    기억과 손끝으로 완성해 낸 당신의 실력에 큰 박수를 보냅니다.
+                  </p>
+                </div>
+
+                <div className="space-y-4 text-xs font-mono text-slate-400 py-6">
+                  <div>
+                    <span className="text-amber-400/90 block">타자 도전 & 영광의 주인공</span>
+                    <span className="text-white text-sm font-sans font-bold">플레이어</span>
+                  </div>
+                  <div>
+                    <span className="text-amber-400/90 block">수도 데이터 감수</span>
+                    <span>국립국어원 외래어 표기법 기준 50개 수도</span>
+                  </div>
+                  <div>
+                    <span className="text-amber-400/90 block">배경 음악</span>
+                    <span>public/bgm.mp3</span>
+                  </div>
+                  <div>
+                    <span className="text-amber-400/90 block">음향 & 특수효과</span>
+                    <span>Web Audio API Synthesizer & Canvas Confetti</span>
+                  </div>
+                </div>
+
+                <div className="pt-8">
+                  <div className="text-3xl sm:text-4xl font-black tracking-[0.5em] text-amber-400/90 font-serif">
+                    THE END
+                  </div>
+                  <div className="text-xs text-slate-500 mt-2">
+                    © 2026 나라별 수도 타자연습. All typing records completed.
+                  </div>
+                </div>
+
+                <div className="pt-10 flex flex-col sm:flex-row items-center justify-center gap-3">
+                  <button
+                    onClick={onRestart}
+                    className="px-8 py-4 rounded-2xl bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 text-white font-extrabold text-base shadow-xl shadow-rose-500/25 transition flex items-center gap-2"
+                  >
+                    <Icons.RotateCcw className="w-5 h-5" />
+                    <span>새로운 마음으로 다시 도전하기</span>
+                  </button>
+                  <button
+                    onClick={handleCopySummary}
+                    className="px-6 py-4 rounded-2xl bg-slate-900 hover:bg-slate-800 text-slate-200 font-semibold text-sm border border-slate-700 transition flex items-center gap-2"
+                  >
+                    <Icons.Share2 className="w-4 h-4 text-cyan-400" />
+                    <span>기록 결과 복사하기</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // ==========================================
+      // 10. RULES MODAL COMPONENT
+      // ==========================================
+      function RulesModal({ isOpen, onClose }) {
+        if (!isOpen) return null;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="w-full max-w-lg bg-slate-900 border border-slate-700 rounded-3xl p-6 sm:p-8 shadow-2xl relative text-left">
+              <button
+                onClick={onClose}
+                className="absolute top-5 right-5 p-2 rounded-xl text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 transition"
+              >
+                <Icons.X className="w-5 h-5" />
+              </button>
+
+              <div className="flex items-center gap-2.5 mb-6">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-400 flex items-center justify-center text-white">
+                  <Icons.Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-white">게임 규칙 및 플레이 방법</h2>
+                  <p className="text-xs text-slate-400">나라별 수도 타자연습 안내서</p>
+                </div>
+              </div>
+
+              <div className="space-y-4 text-xs sm:text-sm text-slate-300">
+                <div className="flex items-start gap-3 p-3 rounded-xl bg-slate-800/60 border border-slate-700/60">
+                  <Icons.Clock className="w-5 h-5 text-cyan-400 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="text-white block font-semibold mb-0.5">
+                      5단계 구성 및 시간 단축 (총 50단어)
+                    </strong>
+                    한 단계당 10개 단어가 출제됩니다. 단계가 올라갈수록 노출 시간이 1초씩 줄어듭니다:
+                    <div className="flex items-center gap-1.5 mt-2 font-mono text-xs flex-wrap">
+                      {[1, 2, 3, 4, 5].map((s) => (
+                        <span key={s} className="px-2 py-0.5 rounded bg-slate-700 text-cyan-300 border border-slate-600">
+                          {s}단계 {STAGE_TIME_LIMITS[s]}초
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3 p-3 rounded-xl bg-slate-800/60 border border-slate-700/60">
+                  <Icons.EyeOff className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="text-white block font-semibold mb-0.5">
+                      단어 숨김 & 기다림 시스템
+                    </strong>
+                    제한 시간이 지나 단어가 화면에서 사라지더라도 게임 오버되지 않습니다. 기억을 되살려 끝까지 입력하실 때까지 충분히 기다려 드립니다.
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3 p-3 rounded-xl bg-slate-800/60 border border-slate-700/60">
+                  <Icons.Trophy className="w-5 h-5 text-yellow-400 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="text-white block font-semibold mb-0.5">
+                      오타 없이 입력 시 +1점 획득 (50점 만점)
+                    </strong>
+                    백스페이스나 오타 없이 한 번에 정확하게 수도를 입력하면 1점이 부여됩니다. 수정 후 정답이어도 단어는 통과되지만 무오타 점수는 주어지지 않습니다.
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3 p-3 rounded-xl bg-slate-800/60 border border-slate-700/60">
+                  <Icons.Film className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="text-white block font-semibold mb-0.5">
+                      '참 잘했어요' 도장 & 영화 엔딩 크레딧
+                    </strong>
+                    50개 단어를 모두 마치면 화려한 '참 잘했어요' 인증 도장 효과가 나타나며, 이후 내가 입력했던 모든 단어와 속도 기록이 영화 엔딩 크레딧처럼 올라갑니다.
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={onClose}
+                className="mt-6 w-full py-3.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-bold transition flex items-center justify-center gap-1.5 shadow-lg"
+              >
+                <Icons.CheckCircle2 className="w-4 h-4" />
+                <span>이해했습니다. 시작하기!</span>
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+      // ==========================================
+      // 11. MAIN APP COMPONENT
+      // ==========================================
+      function App() {
+        const [phase, setPhase] = useState("ready");
+        const [stage, setStage] = useState(1);
+        const [wordIndexInStage, setWordIndexInStage] = useState(0);
+        const [score, setScore] = useState(0);
+        const [records, setRecords] = useState([]);
+        const [isMuted, setIsMuted] = useState(false);
+        const [showRules, setShowRules] = useState(false);
+        const [isBgmPlaying, setIsBgmPlaying] = useState(false);
+
+        // BGM controller
+        const bgmAudioRef = useRef(null);
+
+        useEffect(() => {
+          bgmAudioRef.current = document.getElementById("bgm-player");
+          if (bgmAudioRef.current) {
+            bgmAudioRef.current.volume = 0.35;
+          }
+        }, []);
+
+        const toggleBgm = () => {
+          const audio = bgmAudioRef.current || document.getElementById("bgm-player");
+          if (!audio) return;
+          if (audio.paused) {
+            audio.play().then(() => {
+              setIsBgmPlaying(true);
+            }).catch((err) => {
+              console.log("Audio autoplay policy or file check:", err);
+            });
+          } else {
+            audio.pause();
+            setIsBgmPlaying(false);
+          }
+        };
+
+        const currentWord = useMemo(() => {
+          const globalIndex = (stage - 1) * 10 + wordIndexInStage;
+          return CAPITAL_WORDS[globalIndex] || CAPITAL_WORDS[0];
+        }, [stage, wordIndexInStage]);
+
+        const currentAverageCPM = useMemo(() => {
+          if (records.length === 0) return 0;
+          const total = records.reduce((acc, r) => acc + r.cpm, 0);
+          return Math.round(total / records.length);
+        }, [records]);
+
+        const handleStartGame = () => {
+          setPhase("playing");
+          setStage(1);
+          setWordIndexInStage(0);
+          setScore(0);
+          setRecords([]);
+
+          // Start BGM automatically on first user click if not already playing
+          const audio = bgmAudioRef.current || document.getElementById("bgm-player");
+          if (audio && audio.paused) {
+            audio.play().then(() => {
+              setIsBgmPlaying(true);
+            }).catch(() => {});
+          }
+        };
+
+        const handleToggleMute = () => {
+          const muted = soundManager.toggleMute();
+          setIsMuted(muted);
+        };
+
+        const handleWordComplete = (result) => {
+          const newRecord = {
+            id: currentWord.id,
+            stage: currentWord.stage,
+            country: currentWord.country,
+            capital: currentWord.capital,
+            flag: currentWord.flag,
+            continent: currentWord.continent,
+            trivia: currentWord.trivia,
+            typed: result.typed,
+            isCorrect: result.isCorrect,
+            isPerfect: result.isPerfect,
+            hadTypo: result.hadTypo,
+            timeTaken: result.timeTaken,
+            timeLimit: STAGE_TIME_LIMITS[stage],
+            disappeared: result.disappeared,
+            cpm: result.cpm,
+            keystrokes: result.keystrokes,
+          };
+
+          const updatedRecords = [...records, newRecord];
+          setRecords(updatedRecords);
+
+          if (result.isPerfect) {
+            setScore((prev) => prev + 1);
+          }
+
+          if (wordIndexInStage >= 9) {
+            if (stage >= 5) {
+              setPhase("grand_celebration");
+            } else {
+              soundManager.playStageClear();
+              setPhase("stage_clear");
+            }
+          } else {
+            setWordIndexInStage((prev) => prev + 1);
+          }
+        };
+
+        const handleNextStage = () => {
+          setStage((prev) => prev + 1);
+          setWordIndexInStage(0);
+          setPhase("playing");
+        };
+
+        return (
+          <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-cyan-500 selection:text-black">
+            <RulesModal isOpen={showRules} onClose={() => setShowRules(false)} />
+
+            {phase !== "credits" && (
+              <Header
+                stage={stage}
+                wordIndexInStage={wordIndexInStage}
+                score={score}
+                cpm={currentAverageCPM}
+                isMuted={isMuted}
+                onToggleMute={handleToggleMute}
+                isBgmPlaying={isBgmPlaying}
+                onToggleBgm={toggleBgm}
+                onReset={handleStartGame}
+                onOpenHelp={() => setShowRules(true)}
+                isPlaying={phase === "playing"}
+              />
+            )}
+
+            <main className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 w-full">
+              {/* PHASE 1: READY SCREEN */}
+              {phase === "ready" && (
+                <div className="w-full max-w-3xl mx-auto py-8 text-center animate-in fade-in zoom-in-95 duration-300">
+                  <div className="inline-flex items-center justify-center w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-400 p-0.5 shadow-2xl shadow-cyan-500/20 mb-6">
+                    <div className="w-full h-full bg-slate-900 rounded-[22px] flex items-center justify-center">
+                      <Icons.Globe className="w-10 h-10 sm:w-12 sm:h-12 text-cyan-400" />
+                    </div>
+                  </div>
+
+                  <h1 className="text-3xl sm:text-5xl font-black text-white tracking-tight mb-4">
+                    나라별 수도 맞추기{" "}
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-400">
+                      타자연습
+                    </span>
+                  </h1>
+
+                  <p className="text-slate-400 text-sm sm:text-lg max-w-xl mx-auto mb-8 leading-relaxed">
+                    전 세계 50개 나라의 수도를 타이핑하세요!
+                    <br />
+                    시간이 지나 단어가 사라져도 끝까지 기억해서 완성하면 성공입니다.
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 max-w-2xl mx-auto mb-8 text-left">
+                    <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 backdrop-blur-sm">
+                      <div className="flex items-center gap-2 text-cyan-400 font-bold text-sm mb-1.5">
+                        <Icons.Clock className="w-4 h-4" />
+                        <span>5단계 시간 단축</span>
+                      </div>
+                      <p className="text-xs text-slate-400">
+                        한 단계 10단어, 1단계 9초부터 단계별로 1초씩 줄어듭니다.
+                      </p>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 backdrop-blur-sm">
+                      <div className="flex items-center gap-2 text-amber-400 font-bold text-sm mb-1.5">
+                        <Icons.EyeOff className="w-4 h-4" />
+                        <span>단어 숨김 대기</span>
+                      </div>
+                      <p className="text-xs text-slate-400">
+                        단어가 사라져도 탈락 없이 완성을 기다려 드립니다.
+                      </p>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 backdrop-blur-sm">
+                      <div className="flex items-center gap-2 text-yellow-400 font-bold text-sm mb-1.5">
+                        <Icons.Trophy className="w-4 h-4" />
+                        <span>무오타 +1점 적립</span>
+                      </div>
+                      <p className="text-xs text-slate-400">
+                        오타 없이 깨끗하게 입력하면 1점 추가! (최대 50점 만점)
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-900/50 border border-slate-800/80 rounded-2xl p-4 max-w-2xl mx-auto mb-8 text-xs text-slate-400">
+                    <div className="font-semibold text-slate-300 mb-2.5 flex items-center justify-center gap-2">
+                      <Icons.Globe className="w-4 h-4 text-cyan-400" />
+                      <span>총 5단계 진행표</span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                      {[1, 2, 3, 4, 5].map((s) => (
+                        <div key={s} className="p-2.5 rounded-xl bg-slate-800/50 border border-slate-700/40 text-center">
+                          <div className="font-bold text-white mb-0.5">{s}단계</div>
+                          <div className="text-[11px] text-cyan-300">{STAGE_TIME_LIMITS[s]}초 노출</div>
+                          <div className="text-[10px] text-slate-500 mt-1">10개 단어</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleStartGame}
+                    className="py-4 px-10 rounded-2xl bg-gradient-to-r from-blue-600 via-cyan-500 to-teal-400 hover:from-blue-500 hover:to-teal-300 text-white font-extrabold text-lg shadow-xl shadow-cyan-500/30 transition transform hover:-translate-y-1 flex items-center justify-center gap-2.5 mx-auto group"
+                  >
+                    <span>1단계 타자연습 시작하기</span>
+                    <Icons.ArrowRight className="w-5 h-5 group-hover:translate-x-1.5 transition-transform" />
+                  </button>
+                </div>
+              )}
+
+              {/* PHASE 2: PLAYING ACTIVE TYPING */}
+              {phase === "playing" && (
+                <div className="w-full flex flex-col items-center justify-center">
+                  <TypingArea
+                    key={`${stage}-${wordIndexInStage}`}
+                    currentWord={currentWord}
+                    stage={stage}
+                    wordIndexInStage={wordIndexInStage}
+                    onWordComplete={handleWordComplete}
+                  />
+                </div>
+              )}
+
+              {/* PHASE 3: STAGE CLEAR TRANSITION MODAL */}
+              {phase === "stage_clear" && (
+                <StageClearModal
+                  stage={stage}
+                  stageRecords={records.filter((r) => r.stage === stage)}
+                  onNextStage={handleNextStage}
+                />
+              )}
+
+              {/* PHASE 4: GRAND '참 잘했어요' STAMP CEREMONY */}
+              {phase === "grand_celebration" && (
+                <StampCelebration
+                  records={records}
+                  score={score}
+                  onGoToCredits={() => setPhase("credits")}
+                  onRestart={handleStartGame}
+                />
+              )}
+
+              {/* PHASE 5: MOVIE CREDITS ROLL */}
+              {phase === "credits" && (
+                <MovieCredits
+                  records={records}
+                  score={score}
+                  onRestart={handleStartGame}
+                />
+              )}
+            </main>
+
+            {phase !== "credits" && (
+              <footer className="w-full py-3 text-center text-xs text-slate-500 border-t border-slate-900">
+                나라별 수도 타자연습 · 배경음악: public/bgm.mp3 · 단독 실행(GitHub Pages/더블클릭) 지원
+              </footer>
+            )}
+          </div>
+        );
+      }
+
+      // Render root
+      const rootElement = document.getElementById("root");
+      ReactDOM.createRoot(rootElement).render(<App />);
+    </script>
   </body>
 </html>
-
